@@ -4,7 +4,8 @@ from scipy.sparse import csr_matrix
 
 pd.options.mode.chained_assignment = None
 
-class FeatureEngineering():
+
+class FeatureEngineering:
 
     def __init__(self, train_file, test_file, key, wide_files=None, long_files=None):
         """
@@ -47,7 +48,7 @@ class FeatureEngineering():
                     raise TypeError('wide_files must be a string or list of strings, but element' +
                                     ' {} is of type {}!'.format(i, type(self.wide_files[i])))
 
-    def extract_features(self):
+    def extract_features(self, na_value=np.nan):
         """
         Extracts the features from the provided files.
         :return: A tuple of:
@@ -62,7 +63,7 @@ class FeatureEngineering():
             self._add_wide_features()
         if self.long_files is not None:
             self._add_long_features()
-        col_indices, features = self._cast_long_features_to_wide()
+        col_indices, features = self._cast_long_features_to_wide(na_value=na_value)
         return self.data, features, col_indices
 
     def _get_train_test(self):
@@ -102,13 +103,13 @@ class FeatureEngineering():
             raise TypeError('Not all keys were found in column names of {}!'.format(filename))
         if {'variable', 'value'}.intersection(feature.columns) != {'variable', 'value'}:
             raise TypeError("All long features must have columns 'variable' and 'value'!  Check {}".format(filename))
-        if len(feature.columns[0]) > len(self.key) + len({'variable', 'value'}):
+        if len(feature.columns) > len(self.key) + len({'variable', 'value'}):
             raise TypeError("Unexpected columns (not keys or 'variable'/'value') in {}".format(filename))
         overlap = set(feature['variable']).intersection(self.data.columns)
         if overlap:
             raise TypeError('Re-defining variables {} in feature file {}!'.format(overlap, filename))
 
-    def _cast_long_features_to_wide(self):
+    def _cast_long_features_to_wide(self, na_value):
         row_indices = self.data[self.key]
         if self.data[self.key].duplicated().any():
             raise KeyError('Multiple occurences of one key were found in train/test!  The key must be unique!')
@@ -117,6 +118,8 @@ class FeatureEngineering():
         col_indices = pd.DataFrame({'variable': list(col_indices), 'col_index': range(len(col_indices))})
         self.features = self.features.merge(row_indices, on=self.key)
         self.features = self.features.merge(col_indices, on='variable')
+        if not np.isnan(na_value):
+            self.features['value'] = [na_value if np.isnan(x) else x for x in self.features['value']]
         sparse_mat = csr_matrix((self.features['value'], (self.features['row_index'], self.features['col_index'])),
                                 shape=(row_indices.shape[0], col_indices.shape[0]))
         # The indices will line up since row_indices is sorted by row_index (by construction) and these row_indices
